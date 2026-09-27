@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customer Order Form</title>
+  <!-- Tailwind CSS for styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Telegram Web App SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+  <div class="bg-white rounded-xl shadow-md p-6 w-full max-max-w-lg space-y-6">
+    <div class="border-b pb-3">
+      <h2 class="text-xl font-bold text-gray-800">Place Your Order</h2>
+      <p class="text-sm text-gray-500">Select items, specify quantities, and submit your order.</p>
+    </div>
+
+    <form id="orderForm" class="space-y-4">
+      <!-- Customer Information -->
+      <div class="grid grid-cols-1 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 uppercase mb-1">Full Name</label>
+          <input type="text" id="customerName" required placeholder="Enter your full name" 
+            class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 uppercase mb-1">Phone Number</label>
+          <input type="tel" id="customerPhone" required placeholder="0911XXXXXX" 
+            class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+      </div>
+
+      <hr class="my-4">
+
+      <!-- Dynamic Product Rows Container -->
+      <div id="itemsContainer" class="space-y-4">
+        <!-- Item rows will be rendered here dynamically -->
+      </div>
+
+      <button type="button" id="addItemBtn" 
+        class="w-full py-2 border-2 border-dashed border-blue-500 text-blue-600 font-semibold rounded-lg hover:bg-blue-50 text-sm">
+        + Add Another Item
+      </button>
+
+      <!-- Order Summary -->
+      <div class="bg-gray-50 p-4 rounded-lg flex justify-between items-center text-gray-800 border">
+        <span class="font-semibold text-sm">Estimated Total:</span>
+        <span id="grandTotal" class="text-lg font-bold text-blue-600">$0.00</span>
+      </div>
+
+      <!-- Notes Field -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 uppercase mb-1">Special Instructions (Optional)</label>
+        <textarea id="orderNotes" rows="2" placeholder="Delivery notes or custom preferences..." 
+          class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+      </div>
+
+      <!-- Submit Button -->
+      <button type="submit" 
+        class="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg shadow hover:bg-blue-700 transition duration-200">
+        Submit Order
+      </button>
+    </form>
+  </div>
+
+  <script>
+    // Initialize Telegram WebApp SDK if running inside Telegram
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.expand(); // Expand Mini App to full height
+    }
+
+    // Product catalog structure
+    const catalog = {
+      "Beverages": [
+        { id: "b1", name: "Sparkling Water (500ml)", price: 1.50 },
+        { id: "b2", name: "Fresh Orange Juice", price: 3.00 },
+        { id: "b3", name: "Cold Brew Coffee", price: 3.50 }
+      ],
+      "Snacks": [
+        { id: "s1", name: "Roasted Almonds (100g)", price: 4.00 },
+        { id: "s2", name: "Potato Chips", price: 2.00 },
+        { id: "s3", name: "Dark Chocolate Bar", price: 2.50 }
+      ],
+      "Dairy": [
+        { id: "d1", name: "Whole Milk (1L)", price: 2.20 },
+        { id: "d2", name: "Greek Yogurt (200g)", price: 1.80 },
+        { id: "d3", name: "Cheddar Cheese (250g)", price: 5.00 }
+      ]
+    };
+
+    let rowCounter = 0;
+
+    // Function to add a dynamic product selection row
+    function createItemRow() {
+      rowCounter++;
+      const rowId = `row-${rowCounter}`;
+      
+      const row = document.createElement('div');
+      row.className = "p-3 border rounded-lg bg-gray-50 relative space-y-3";
+      row.id = rowId;
+
+      row.innerHTML = `
+        <button type="button" onclick="removeRow('${rowId}')" 
+          class="absolute top-2 right-2 text-gray-400 hover:text-red-500 font-bold text-lg">&times;</button>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <!-- Category Select -->
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Category</label>
+            <select class="category-select w-full border rounded p-2 text-sm bg-white" onchange="updateItems('${rowId}')">
+              <option value="">Select Category</option>
+              ${Object.keys(catalog).map(cat => `<option value="${cat}">${cat}</option>`).join('')}
+            </select>
+          </div>
+
+          <!-- Item Select -->
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Item</label>
+            <select class="item-select w-full border rounded p-2 text-sm bg-white" disabled onchange="calculateTotal()">
+              <option value="">Select Item</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <!-- Quantity Input -->
+          <div class="flex items-center space-x-2">
+            <label class="text-xs text-gray-500">Qty:</label>
+            <input type="number" min="1" value="1" class="qty-input w-20 border rounded p-1 text-center text-sm bg-white" oninput="calculateTotal()">
+          </div>
+
+          <!-- Subtotal -->
+          <div class="text-sm text-gray-600">
+            Subtotal: <span class="subtotal-val font-semibold text-gray-800">$0.00</span>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('itemsContainer').appendChild(row);
+    }
+
+    // Cascade options to item dropdown based on selected category
+    function updateItems(rowId) {
+      const row = document.getElementById(rowId);
+      const catSelect = row.querySelector('.category-select');
+      const itemSelect = row.querySelector('.item-select');
+      const selectedCat = catSelect.value;
+
+      itemSelect.innerHTML = '<option value="">Select Item</option>';
+      
+      if (selectedCat && catalog[selectedCat]) {
+        catalog[selectedCat].forEach(prod => {
+          const opt = document.createElement('option');
+          opt.value = prod.id;
+          opt.textContent = `${prod.name} ($${prod.price.toFixed(2)})`;
+          opt.dataset.price = prod.price;
+          opt.dataset.name = prod.name;
+          itemSelect.appendChild(opt);
+        });
+        itemSelect.disabled = false;
+      } else {
+        itemSelect.disabled = true;
+      }
+
+      calculateTotal();
+    }
+
+    // Remove a dynamic row
+    function removeRow(rowId) {
+      const rows = document.querySelectorAll('#itemsContainer > div');
+      if (rows.length > 1) {
+        document.getElementById(rowId).remove();
+        calculateTotal();
+      } else {
+        alert("Your order must contain at least one item.");
+      }
+    }
+
+    // Calculate subtotal for each row and order total
+    function calculateTotal() {
+      let grandTotal = 0;
+      const rows = document.querySelectorAll('#itemsContainer > div');
+
+      rows.forEach(row => {
+        const itemSelect = row.querySelector('.item-select');
+        const qtyInput = row.querySelector('.qty-input');
+        const subtotalSpan = row.querySelector('.subtotal-val');
+
+        const selectedOpt = itemSelect.options[itemSelect.selectedIndex];
+        const price = selectedOpt && selectedOpt.dataset.price ? parseFloat(selectedOpt.dataset.price) : 0;
+        const qty = parseInt(qtyInput.value) || 0;
+
+        const subtotal = price * qty;
+        subtotalSpan.textContent = `$${subtotal.toFixed(2)}`;
+        grandTotal += subtotal;
+      });
+
+      document.getElementById('grandTotal').textContent = `$${grandTotal.toFixed(2)}`;
+    }
+
+    // Initialize with 1 default row on load
+    createItemRow();
+    document.getElementById('addItemBtn').addEventListener('click', createItemRow);
+
+    // Form Submission Handling
+    document.getElementById('orderForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const customerName = document.getElementById('customerName').value;
+      const customerPhone = document.getElementById('customerPhone').value;
+      const notes = document.getElementById('orderNotes').value;
+
+      const items = [];
+      document.querySelectorAll('#itemsContainer > div').forEach(row => {
+        const itemSelect = row.querySelector('.item-select');
+        const qtyInput = row.querySelector('.qty-input');
+        const selectedOpt = itemSelect.options[itemSelect.selectedIndex];
+
+        if (selectedOpt && selectedOpt.value) {
+          items.push({
+            itemId: selectedOpt.value,
+            itemName: selectedOpt.dataset.name,
+            unitPrice: parseFloat(selectedOpt.dataset.price),
+            quantity: parseInt(qtyInput.value)
+          });
+        }
+      });
+
+      if (items.length === 0) {
+        alert("Please select at least one valid item.");
+        return;
+      }
+
+      const payload = {
+        customerName,
+        customerPhone,
+        notes,
+        items,
+        totalAmount: document.getElementById('grandTotal').textContent
+      };
+
+      // Send payload back to Telegram Bot if operating inside Telegram Web App
+      if (tg && tg.sendData) {
+        tg.sendData(JSON.stringify(payload));
+      } else {
+        console.log("Form Payload Submitted:", payload);
+        alert("Order submitted successfully! (Check developer console for JSON payload)");
+      }
+    });
+  </script>
+</body>
+</html>
